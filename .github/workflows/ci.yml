@@ -16,18 +16,30 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions/setup-node@v3
         with:
           node-version: 18
+
       - run: npm install
       - run: npm test
       - run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: .
 
   deploy-dev:
     if: github.ref == 'refs/heads/dev'
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-files
       - run: echo "Deploying to DEV"
 
   deploy-uat:
@@ -35,6 +47,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-files
       - run: echo "Deploying to UAT"
 
   deploy-prod:
@@ -43,4 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-files
       - run: echo "Deploying to PRODUCTION"
