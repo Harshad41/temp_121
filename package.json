@@ -1,0 +1,12 @@
+{
+  "name": "temp_121",
+  "version": "1.0.0",
+  "description": "Sample project for GitHub Actions CI practice",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Tests passed successfully\"",
+    "build": "echo \"Build completed successfully\""
+  },
+  "author": "Harshad",
+  "license": "ISC"
+}
