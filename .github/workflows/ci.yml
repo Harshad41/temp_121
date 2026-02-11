@@ -67,4 +67,19 @@ jobs:
           UAT_SERVER: ${{ secrets.UAT_SERVER }}
           DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
-  deploy-pro
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-files
+      - name: Deploy to Production
+        run: |
+          echo "Deploying to $PROD_SERVER"
+          echo "Using token $DEPLOY_TOKEN"
+        env:
+          PROD_SERVER: ${{ secrets.PROD_SERVER }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
