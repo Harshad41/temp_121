@@ -31,16 +31,24 @@ jobs:
           name: build-files
           path: .
 
-  deploy-dev:
-    if: github.ref == 'refs/heads/dev'
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-files
-      - run: echo "Deploying to DEV"
+deploy-dev:
+  if: github.ref == 'refs/heads/dev'
+  needs: build
+  runs-on: ubuntu-latest
+  environment: dev
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: build-files
+
+    - name: Deploy to Dev
+      run: |
+        echo "Deploying to $DEV_SERVER"
+        echo "Using token $DEPLOY_TOKEN"
+      env:
+        DEV_SERVER: ${{ secrets.DEV_SERVER }}
+        DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+
 
   deploy-uat:
     if: github.ref == 'refs/heads/uat'
