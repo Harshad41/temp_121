@@ -1,15 +1,3 @@
-name: CI Pipeline
-
-on:
-  push:
-    branches:
-      - dev
-      - uat
-      - main
-  pull_request:
-    branches:
-      - dev
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,59 +18,57 @@ jobs:
         with:
           name: build-files
           path: .
+
   deploy-dev:
-  if: github.ref == 'refs/heads/dev'
-  needs: build
-  runs-on: ubuntu-latest
-  environment: dev
-  steps:
-    - uses: actions/download-artifact@v4
-      with:
-        name: build-files
+    if: github.ref == 'refs/heads/dev'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-files
 
-    - name: Deploy to Dev
-      run: |
-        echo "Deploying to $DEV_SERVER"
-        echo "Using token $DEPLOY_TOKEN"
-      env:
-        DEV_SERVER: ${{ secrets.DEV_SERVER }}
-        DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      - name: Deploy to Dev
+        run: |
+          echo "Deploying to $DEV_SERVER"
+          echo "Using token $DEPLOY_TOKEN"
+        env:
+          DEV_SERVER: ${{ secrets.DEV_SERVER }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
+  deploy-uat:
+    if: github.ref == 'refs/heads/uat'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: uat
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-files
 
-deploy-uat:
-  if: github.ref == 'refs/heads/uat'
-  needs: build
-  runs-on: ubuntu-latest
-  environment: uat
-  steps:
-    - uses: actions/download-artifact@v4
-      with:
-        name: build-files
+      - name: Deploy to UAT
+        run: |
+          echo "Deploying to $UAT_SERVER"
+          echo "Using token $DEPLOY_TOKEN"
+        env:
+          UAT_SERVER: ${{ secrets.UAT_SERVER }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
-    - name: Deploy to uat
-      run: |
-        echo "Deploying to $DEV_SERVER"
-        echo "Using token $DEPLOY_TOKEN"
-      env:
-        DEV_SERVER: ${{ secrets.UAT_SERVER }}
-        DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-files
 
-
-deploy-prod:
-  if: github.ref == 'refs/heads/production'
-  needs: build
-  runs-on: ubuntu-latest
-  environment: production
-  steps:
-    - uses: actions/download-artifact@v4
-      with:
-        name: build-files
-
-    - name: Deploy to production
-      run: |
-        echo "Deploying to $DEV_SERVER"
-        echo "Using token $DEPLOY_TOKEN"
-      env:
-        DEV_SERVER: ${{ secrets.PROD_SERVER }}
-        DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
-
+      - name: Deploy to Production
+        run: |
+          echo "Deploying to $PROD_SERVER"
+          echo "Using token $DEPLOY_TOKEN"
+        env:
+          PROD_SERVER: ${{ secrets.PROD_SERVER }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
