@@ -13,8 +13,8 @@ jobs:
 
       - name: Check Wiki Status
         env:
-          ORG_NAME: your-org-name
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG_NAME: Harshad41 
+          GH_TOKEN: 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
         run: |
           echo "Fetching repositories..."
 
