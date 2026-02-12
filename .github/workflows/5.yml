@@ -6,6 +6,7 @@ on:
 jobs:
   create-wikis:
     runs-on: ubuntu-latest
+
     steps:
       - name: Install dependencies
         run: |
@@ -15,7 +16,7 @@ jobs:
       - name: Create Wikis for all repos
         env:
           USERNAME: Harshad41
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Use GitHub Secret!
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "Fetching repositories..."
           page=1
@@ -25,6 +26,7 @@ jobs:
           while : ; do
             response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/users/$USERNAME/repos?per_page=100&page=$page")
+
             http_code=$(echo "$response" | tail -n1)
             body=$(echo "$response" | head -n-1)
             
@@ -35,7 +37,7 @@ jobs:
             fi
             
             count=$(echo "$body" | jq '. | length')
-            if [ "$count" -eq 0" ]; then
+            if [ "$count" -eq 0 ]; then
               break
             fi
             
@@ -43,10 +45,10 @@ jobs:
               echo ""
               echo "Processing repo: $repo (wiki: $has_wiki)"
               
-              # Skip if wiki is disabled
               if [ "$has_wiki" = "false" ]; then
                 echo "  → Enabling wiki..."
-                curl -s -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
+                curl -s -X PATCH \
+                  -H "Authorization: Bearer $GH_TOKEN" \
                   -H "Accept: application/vnd.github+json" \
                   "https://api.github.com/repos/$USERNAME/$repo" \
                   -d '{"wiki": true}' > /dev/null
@@ -59,13 +61,11 @@ jobs:
                 fi
               fi
               
-              # Check if wiki already has content
               wiki_git_url="https://github.com/$USERNAME/$repo.wiki.git"
               temp_dir=$(mktemp -d)
               
               if git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null; then
-                # Check if wiki has actual content (excluding .git)
-                if find "$temp_dir" -maxdepth 1 -type f -not -path "$temp_dir/.git/*" | grep -q .; then
+                if find "$temp_dir" -maxdepth 1 -type f ! -name ".git" | grep -q .; then
                   echo "  ✅ $repo → Wiki exists with content (SKIPPED)"
                   ((total_skipped++))
                 else
@@ -75,28 +75,38 @@ jobs:
                 echo "  📝 $repo → Wiki new/empty, creating Home.md..."
               fi
               
-              # Clean up clone
               rm -rf "$temp_dir"
               
-              # Create wiki content only if empty/new
               if ! git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null || \
-                 ! find "$temp_dir" -maxdepth 1 -type f -not -path "$temp_dir/.git/*" | grep -q .; then
-                
-                # Create Home.md content
-                cat > "$temp_dir/Home.md" << 'EOF'
+                 ! find "$temp_dir" -maxdepth 1 -type f ! -name ".git" | grep -q .; then
+
+                cat <<EOF > "$temp_dir/Home.md"
 # Welcome to the Repository Wiki
 
-# This wiki serves as documentation for the **$(basename $repo)** repository.
+This wiki serves as documentation for the **$repo** repository.
 
-# Quick Start
-- **Repository**: https://github.com/Harshad41/$(basename $repo)
-- **Purpose**: [Add description here]
-- **Tech Stack**: [List technologies used]
+## Quick Start
 
-# Table of Contents
+- **Repository**: https://github.com/$USERNAME/$repo
+- **Purpose**: Add description here
+- **Tech Stack**: List technologies used
+
+## Table of Contents
+
 - [Getting Started](#getting-started)
 - [Deployment](#deployment)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 
 ## Getting Started
+
+Add setup instructions here.
+
+EOF
+
+              fi
+
+            done
+
+            page=$((page + 1))
+          done
