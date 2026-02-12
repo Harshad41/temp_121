@@ -1,9 +1,10 @@
-name: 6_working - Create Wikis
+name: 7_working - Create Wikis
+
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # ✅ Only this is needed for git push to wiki
+  contents: write
 
 jobs:
   create-empty-wikis:
@@ -34,80 +35,65 @@ jobs:
           EOF
           )
 
-          # Use associative array to avoid pipe issues
-          declare -A needs_wiki
-          
-          # Scan all repos
-          page=1
-          while : ; do
-            response=$(curl -s -w "\n%{http_code}" \
-              -H "Authorization: token $GH_TOKEN" \
-              "https://api.github.com/users/$USERNAME/repos?per_page=100&page=$page")
-            
-            http_code=$(echo "$response" | tail -n1)
-            body=$(echo "$response" | head -n-1)
-            
-            [[ "$http_code" != "200" ]] && { echo "❌ API Error: $http_code"; exit 1; }
-            
-            count=$(echo "$body" | jq '. | length')
-            [[ "$count" -eq 0 ]] && break
+          # SIMPLE ARRAY - NO PIPE ISSUES
+          needs_wiki=()
 
-            # Process each repo - FIXED ARRAY POPULATION
-            while IFS= read -r line; do
-              [[ -z "$line" ]] && continue
-              repo=$(echo "$line" | awk '{print $1}')
-              has_wiki=$(echo "$line" | awk '{print $2}')
-              
-              if [[ "$has_wiki" == "false" ]]; then
-                echo "📝 $repo → Wiki DISABLED (SKIPPING as requested)"
-              elif [[ "$has_wiki" == "true" ]]; then
-                # Check if wiki is actually empty
-                wiki_url="https://github.com/$USERNAME/$repo.wiki.git"
-                if ! git ls-remote --exit-code --heads "$wiki_url" >/dev/null 2>&1; then
-                  echo "📝 $repo → Wiki enabled but EMPTY/INACCESSIBLE (will create)"
-                  needs_wiki["$repo"]=1
-                else
-                  echo "✅ $repo → Wiki exists with content (SKIPPING)"
-                fi
+          # Get ALL repos in one call
+          repos_json=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/users/$USERNAME/repos?per_page=100")
+
+          # Process repos DIRECTLY (no pipes!)
+          echo "$repos_json" | jq -r '.[] | "\(.name),\(.has_wiki)"' | while IFS=',' read -r repo has_wiki; do
+            if [[ "$has_wiki" == "false" ]]; then
+              echo "📝 $repo → Wiki DISABLED (SKIPPING as requested)"
+            elif [[ "$has_wiki" == "true" ]]; then
+              # Test wiki existence with ls-remote (fast)
+              wiki_url="https://github.com/$USERNAME/$repo.wiki.git"
+              if ! git ls-remote --exit-code --heads "$wiki_url" >/dev/null 2>&1; then
+                echo "📝 $repo → Wiki enabled but EMPTY/INACCESSIBLE (will create)"
+                needs_wiki+=("$repo")
+              else
+                echo "✅ $repo → Wiki exists with content (SKIPPING)"
               fi
-            done < <(echo "$body" | jq -r '.[] | "\(.name) \(.has_wiki)"')
-
-            ((page++))
+            fi
           done
 
-          # Convert to normal array
-          needs_wiki_array=("${!needs_wiki[@]}")
           echo ""
-          echo "📊 Found ${#needs_wiki_array[@]} repositories needing wikis: ${needs_wiki_array[*]}"
+          echo "📊 Found ${#needs_wiki[@]} repositories needing wikis"
           
-          # CREATE WIKIS FOR EMPTY REPOS ONLY
-          for repo in "${needs_wiki_array[@]}"; do
-            echo ""
+          # CREATE WIKIS
+          for repo in "${needs_wiki[@]}"; do
             echo "🔄 Creating wiki for $repo..."
             
+            # Create temp dir and init git
             TEMP_DIR=$(mktemp -d)
             cd "$TEMP_DIR"
-            
             git init
-            git checkout -b main || true
+            git checkout -b main
+            
+            # Config
             git config user.name "GitHub Actions"
             git config user.email "actions@github.com"
             
+            # Create Home.md
             echo "$HOME_MD" > Home.md
             git add Home.md
-            git commit -m "Add initial Home.md via GitHub Actions"
+            git commit -m "Add initial Home.md"
             
+            # Push to wiki
             git remote add origin "https://x-access-token:$GH_TOKEN@github.com/$USERNAME/$repo.wiki.git"
             if git push -u origin main; then
               echo "✅ $repo → Wiki created with Home.md"
             else
-              echo "❌ $repo → Push failed"
+              echo "❌ $repo → Push failed (wiki may still be initializing)"
+              sleep 3
+              git push -u origin main --force || echo "⚠️  Retry failed"
             fi
             
             cd ..
             rm -rf "$TEMP_DIR"
+            echo ""
           done
 
-          echo ""
           echo "🎉 Wiki creation complete!"
-
