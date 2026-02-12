@@ -13,40 +13,52 @@ jobs:
 
       - name: Check Wiki Status
         env:
-          USERNAME: Harshad41 
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          USERNAME: Harshad41
+          # It's highly recommended to store your GH_TOKEN as a GitHub Secret
+          # in your repository settings rather than hardcoding it here.
+          # Example: GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: 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
         run: |
           echo "Fetching repositories..."
           page=1
           while : ; do
             response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/users/$USERNAME/repos?per_page=100&page=$page")
-            
+
             http_code=$(echo "$response" | tail -n1)
             body=$(echo "$response" | head -n-1)
-            
+
             if [ "$http_code" != "200" ]; then
               echo "Error: HTTP $http_code"
               echo "$body"
               break
             fi
-            
+
             count=$(echo "$body" | jq '. | length')
             if [ "$count" -eq 0 ]; then
               break
             fi
-            
+
             echo "$body" | jq -r '.[] | "\(.name) \(.has_wiki)"' | while read repo has_wiki; do
               if [ "$has_wiki" = "true" ]; then
-                # Check if wiki has any pages by checking the wiki git endpoint
-                wiki_pages=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-                  "https://api.github.com/repos/$USERNAME/$repo/git/refs/heads/wiki" 2>/dev/null || echo "")
-                
-                if [ -z "$wiki_pages" ] || echo "$wiki_pages" | grep -q "Not Found"; then
-                  echo "⚠️ $repo → Wiki enabled but NO PAGES"
+                # Try to fetch the default branch of the wiki's Git repository
+                # and check if it contains any files.
+                wiki_git_url="https://github.com/$USERNAME/$repo.wiki.git"
+                temp_dir=$(mktemp -d)
+
+                # Clone the wiki repo silently and check for success
+                if git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null; then
+                  # Check if the cloned directory contains any files (excluding .git)
+                  if find "$temp_dir" -maxdepth 1 -type f | grep -q .; then
+                    echo "✅ $repo → Wiki exists"
+                  else
+                    echo "❌ $repo → Wiki enabled but EMPTY"
+                  fi
                 else
-                  echo "✅ $repo → Wiki enabled with pages"
+                  # If cloning fails, it usually means the wiki repo doesn't exist or is empty
+                  echo "❌ $repo → Wiki enabled but content not found/publicly accessible"
                 fi
+                rm -rf "$temp_dir" # Clean up the temporary directory
               else
                 echo "❌ $repo → Wiki DISABLED"
               fi
