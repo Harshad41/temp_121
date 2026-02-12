@@ -1,4 +1,4 @@
-name: 3 - Create Wikis (DEV BRANCH)
+name: 8 - Create Wikis (DEV BRANCH)
 
 on:
   workflow_dispatch:
