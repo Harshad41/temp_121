@@ -80,7 +80,7 @@ jobs:
               if ! git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null || \
                  ! find "$temp_dir" -maxdepth 1 -type f ! -name ".git" | grep -q .; then
 
-                cat <<EOF > "$temp_dir/Home.md"
+                cat <<'EOF' > "$temp_dir/Home.md"
 # Welcome to the Repository Wiki
 
 This wiki serves as documentation for the **$repo** repository.
