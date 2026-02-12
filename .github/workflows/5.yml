@@ -1,111 +1,141 @@
-name: 5-Create-Wikis
+name: 3 - Create Wikis (Fixed)
 
 on:
   workflow_dispatch:
 
 jobs:
-  create-wikis:
+  create-missing-wikis:
     runs-on: ubuntu-latest
     steps:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq git
+          sudo apt-get install -y jq git curl
 
-      - name: Create Wikis for all repos
+      - name: Check & Create Wikis
         env:
           USERNAME: Harshad41
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          echo "Fetching repositories..."
+          # Standard wiki Home.md template
+          HOME_MD_CONTENT=$(cat << 'EOF'
+          # Welcome to the Repository Wiki
+
+          This wiki contains documentation, guides, and resources for this project.
+
+          ## Quick Navigation
+          - [Getting Started](Getting-Started)
+          - [Configuration](Configuration)
+          - [Troubleshooting](Troubleshooting)
+          - [FAQ](FAQ)
+
+          ## Recent Updates
+          **Last updated:** $(date +%Y-%m-%d)
+          EOF
+          )
+
           page=1
-          total_created=0
-          total_skipped=0
+          needs_wiki=()
           
+          echo "🔍 Scanning repositories..."
+          
+          # Phase 1: Identify repos needing wikis
           while : ; do
             response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/users/$USERNAME/repos?per_page=100&page=$page")
             http_code=$(echo "$response" | tail -n1)
             body=$(echo "$response" | head -n-1)
             
-            if [ "$http_code" != "200" ]; then
-              echo "Error: HTTP $http_code"
-              echo "$body" | jq .
-              exit 1
-            fi
+            [[ "$http_code" != "200" ]] && { echo "❌ API Error: $http_code"; exit 1; }
             
             count=$(echo "$body" | jq '. | length')
-            if [ "$count" -eq 0 ]; then
-              break
-            fi
-            
-            echo "$body" | jq -r '.[] | "\(.name) \(.has_wiki)"' | while read repo has_wiki; do
-              echo ""
-              echo "Processing repo: $repo (wiki: $has_wiki)"
-              
-              if [ "$has_wiki" = "false" ]; then
-                echo "  → Enabling wiki..."
-                curl -s -X PATCH \
-                  -H "Authorization: Bearer $GH_TOKEN" \
-                  -H "Accept: application/vnd.github+json" \
-                  "https://api.github.com/repos/$USERNAME/$repo" \
-                  -d '{"wiki": true}' > /dev/null || true
-                echo "  ✅ Wiki enabled for $repo"
-              fi
-              
-              wiki_git_url="https://github.com/$USERNAME/$repo.wiki.git"
-              temp_dir=$(mktemp -d)
-              has_content=false
-              
-              if git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null; then
-                if find "$temp_dir" -maxdepth 1 -type f ! -name ".git" | grep -q .; then
-                  echo "  ✅ $repo → Wiki exists (SKIPPED)"
-                  ((total_skipped++))
-                  has_content=true
-                fi
-              fi
-              
-              rm -rf "$temp_dir"
-              
-              if [ "$has_content" = "false" ]; then
-                echo "  📝 Creating wiki for $repo..."
+            [[ "$count" -eq 0 ]] && break
+
+            echo "$body" | jq -r '.[] | "\(.name) \(.has_wiki)"' | while read -r repo has_wiki; do
+              if [[ "$has_wiki" == "false" ]]; then
+                echo "📝 $repo → Wiki DISABLED (will create)"
+                needs_wiki+=("$repo")
+              elif [[ "$has_wiki" == "true" ]]; then
+                # Test wiki content accessibility
+                wiki_url="https://github.com/$USERNAME/$repo.wiki.git"
                 temp_dir=$(mktemp -d)
-                
-                cat > "$temp_dir/Home.md" << EOF
-# $repo Wiki
-
-## Quick Start
-- **Repository**: https://github.com/Harshad41/$repo
-- **Clone**: \`git clone https://github.com/Harshad41/$repo.git\`
-
-## Contents
-- [Getting Started](#getting-started)
-- [Deployment](#deployment)
-
-*Generated: $(date)*
-EOF
-
-                cd "$temp_dir" || exit 1
-                git init
-                git config user.name "GitHub Actions"
-                git config user.email "actions@github.com"
-                git remote add origin "$wiki_git_url"
-                git checkout -b main || git checkout -b master
-                git add Home.md
-                git commit -m "Add initial Home.md"
-                git push -u origin main 2>/dev/null || git push -u origin master 2>/dev/null || echo "  ⚠️ Push failed"
-                
-                echo "  ✅ $repo → Wiki created!"
-                ((total_created++))
-                
-                cd ..
+                if ! git ls-remote --exit-code --heads "$wiki_url" >/dev/null 2>&1; then
+                  echo "📝 $repo → Wiki enabled but EMPTY/INACCESSIBLE (will create)"
+                  needs_wiki+=("$repo")
+                elif ! git clone --quiet --depth 1 "$wiki_url" "$temp_dir" 2>/dev/null; then
+                  echo "📝 $repo → Wiki enabled but EMPTY/INACCESSIBLE (will create)"  
+                  needs_wiki+=("$repo")
+                else
+                  if ! find "$temp_dir" -mindepth 1 -maxdepth 1 -type f | grep -q .; then
+                    echo "📝 $repo → Wiki enabled but EMPTY (will create)"
+                    needs_wiki+=("$repo")
+                  else
+                    echo "✅ $repo → Wiki exists with content (SKIPPING)"
+                  fi
+                fi
                 rm -rf "$temp_dir"
               fi
             done
-            
-            page=$((page + 1))
+            ((page++))
           done
-          
+
           echo ""
-          echo "=== SUMMARY ==="
-          echo "Created: $total_created | Skipped: $total_skipped"
+          echo "📊 Found ${#needs_wiki[@]} repositories needing wikis"
+          
+          # Phase 2: Create wikis
+          for repo in "${needs_wiki[@]}"; do
+            echo ""
+            echo "🔄 Creating wiki for $repo..."
+            
+            # Ensure wiki is enabled
+            repo_info=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$USERNAME/$repo")
+            current_wiki=$(echo "$repo_info" | jq -r '.has_wiki')
+            
+            if [[ "$current_wiki" == "false" ]]; then
+              echo "   → Enabling wiki feature..."
+              curl -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -d '{"has_wiki": true}' \
+                "https://api.github.com/repos/$USERNAME/$repo" >/dev/null
+              sleep 5  # Wait for GitHub to provision wiki repo
+            fi
+
+            # Create Home.md content
+            git config --global user.name "GitHub Actions Bot"
+            git config --global user.email "actions@github.com"
+
+            wiki_dir=$(mktemp -d)
+            wiki_url="https://$USERNAME@github.com/$USERNAME/$repo.wiki.git"
+            
+            # Clone or init wiki repo
+            if git clone "https://github.com/$USERNAME/$repo.wiki.git" "$wiki_dir" 2>/dev/null; then
+              cd "$wiki_dir"
+            else
+              cd "$wiki_dir"
+              git init
+              git remote add origin "$wiki_url"
+              git checkout -b main || git checkout main
+            fi
+
+            # Create Home.md only if missing
+            if [[ ! -f "Home.md" ]]; then
+              echo "${HOME_MD_CONTENT//\$/\\$}" > Home.md
+              git add Home.md
+              git commit -m "feat: add initial Home page via GitHub Actions [skip ci]"
+              
+              # Force push to main branch
+              git push -u origin main --force-with-lease 2>/dev/null || \
+              git push -u origin main 2>/dev/null
+              
+              echo "✅ $repo → Wiki created with Home.md"
+            else
+              echo "⚠️  $repo → Wiki already has Home.md (skipped)"
+            fi
+            
+            cd ..
+            rm -rf "$wiki_dir"
+          done
+
+          echo ""
+          echo "🎉 Wiki creation complete!"
