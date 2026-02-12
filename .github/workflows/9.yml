@@ -1,0 +1,101 @@
+name: 9 - Create Wikis (WIKI.GIT FIXED)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-empty-wikis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y jq git curl
+
+      - name: Create Wikis for EMPTY Repos
+        env:
+          USERNAME: Harshad41
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          echo "🔍 Scanning repositories..."
+
+          HOME_MD=$(cat << 'EOF'
+          # Welcome to the Repository Wiki
+          
+          This wiki contains project documentation and guides.
+          
+          ## Navigation
+          - [Getting Started](Getting-Started)
+          - [Configuration](Configuration)
+          - [Troubleshooting](Troubleshooting)
+          
+          **Updated:** $(date +%Y-%m-%d)
+          EOF
+          )
+
+          mapfile -t repo_lines < <(
+            curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/users/$USERNAME/repos?per_page=100" | \
+            jq -r '.[] | "\(.name) \(.has_wiki)"'
+          )
+
+          needs_wiki=()
+          for line in "${repo_lines[@]}"; do
+            repo=$(echo "$line" | awk '{print $1}')
+            has_wiki=$(echo "$line" | awk '{print $2}')
+            
+            if [[ "$has_wiki" == "false" ]]; then
+              echo "📝 $repo → Wiki DISABLED (SKIPPING)"
+            elif [[ "$has_wiki" == "true" ]]; then
+              # CHECK WEB ACCESS instead of .wiki.git
+              if ! curl -s -f -I "https://github.com/$USERNAME/$repo/wiki" | grep -q "200 OK"; then
+                echo "📝 $repo → Wiki enabled but EMPTY (will create)"
+                needs_wiki+=("$repo")
+              else
+                echo "✅ $repo → Wiki accessible (SKIPPING)"
+              fi
+            fi
+          done
+
+          echo "📊 Found ${#needs_wiki[@]} repos: ${needs_wiki[*]}"
+
+          for repo in "${needs_wiki[@]}"; do
+            echo ""
+            echo "🔄 Creating wiki for $repo..."
+            
+            TEMP_DIR=$(mktemp -d)
+            cd "$TEMP_DIR"
+            
+            git init
+            git checkout -b dev
+            
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            
+            echo "$HOME_MD" > Home.md
+            git add Home.md
+            git commit -m "Add initial Home.md"
+            
+            # TRY ALL AUTH METHODS
+            for auth in \
+              "https://token:$GH_TOKEN@github.com/$USERNAME/$repo.wiki.git" \
+              "https://x-access-token:$GH_TOKEN@github.com/$USERNAME/$repo.wiki.git" \
+              "https://$USERNAME:$GH_TOKEN@github.com/$USERNAME/$repo.wiki.git"; do
+              
+              git remote remove origin 2>/dev/null || true
+              git remote add origin "$auth"
+              
+              if git push -u origin dev 2>/dev/null; then
+                echo "✅ $repo → Wiki created on dev branch (auth: ${auth%%@*})"
+                break
+              fi
+              sleep 2
+            done
+            
+            cd ..
+            rm -rf "$TEMP_DIR"
+          done
+
+          echo ""
+          echo "🎉 ALL WIKIS CREATED!"
