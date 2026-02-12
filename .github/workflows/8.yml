@@ -34,12 +34,21 @@ jobs:
           EOF
           )
 
-          # Get repos
-          repos_json=$(curl -s -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/users/$USERNAME/repos?per_page=100")
-
+          # PIPE-FREE: Direct jq processing
           needs_wiki=()
-          echo "$repos_json" | jq -r '.[] | "\(.name),\(.has_wiki)"' | while IFS=',' read -r repo has_wiki; do
+          
+          # Get ALL repos as array
+          mapfile -t repo_lines < <(
+            curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/users/$USERNAME/repos?per_page=100" | \
+            jq -r '.[] | "\(.name) \(.has_wiki)"'
+          )
+
+          # Process WITHOUT PIPE
+          for line in "${repo_lines[@]}"; do
+            repo=$(echo "$line" | awk '{print $1}')
+            has_wiki=$(echo "$line" | awk '{print $2}')
+            
             if [[ "$has_wiki" == "false" ]]; then
               echo "📝 $repo → Wiki DISABLED (SKIPPING)"
             elif [[ "$has_wiki" == "true" ]]; then
@@ -53,17 +62,16 @@ jobs:
             fi
           done
 
+          echo ""
           echo "📊 Found ${#needs_wiki[@]} repos: ${needs_wiki[*]}"
 
           # CREATE WIKIS ON DEV BRANCH
           for repo in "${needs_wiki[@]}"; do
-            echo ""
-            echo "🔄 $repo..."
+            echo "🔄 Creating wiki for $repo..."
             
             TEMP_DIR=$(mktemp -d)
             cd "$TEMP_DIR"
             
-            # HARDCODE DEV BRANCH
             git init
             git checkout -b dev
             
@@ -74,22 +82,21 @@ jobs:
             git add Home.md
             git commit -m "Add initial Home.md"
             
-            git remote add origin \
-              "https://$GH_TOKEN@github.com/$USERNAME/$repo.wiki.git"
+            git remote add origin "https://$GH_TOKEN@github.com/$USERNAME/$repo.wiki.git"
             
-            # PUSH TO DEV BRANCH
             if git push -u origin dev; then
               echo "✅ $repo → Wiki created on dev branch"
             else
-              echo "⚠️  $repo → First push failed, retrying..."
+              echo "⚠️  $repo → Push failed, retrying..."
               sleep 5
-              git push -u origin dev --force || \
-              echo "❌ $repo → Failed after retry"
+              git push -u origin dev --force && \
+                echo "✅ $repo → Wiki created after retry" || \
+                echo "❌ $repo → Failed"
             fi
             
             cd ..
             rm -rf "$TEMP_DIR"
+            echo ""
           done
 
-          echo ""
-          echo "🎉 COMPLETE!"
+          echo "🎉 ALL WIKIS CREATED!"
