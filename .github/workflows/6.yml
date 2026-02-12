@@ -1,0 +1,116 @@
+name: 6_working - Create Wikis (ARRAY FIXED)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  metadata: read
+
+jobs:
+  create-empty-wikis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y jq git curl
+
+      - name: Create Wikis for EMPTY Repos ONLY
+        env:
+          USERNAME: Harshad41
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          echo "🔍 Scanning repositories..."
+
+          # Wiki template
+          HOME_MD=$(cat << 'EOF'
+          # Welcome to the Repository Wiki
+          
+          This wiki contains project documentation and guides.
+          
+          ## Navigation
+          - [Getting Started](Getting-Started)
+          - [Configuration](Configuration)
+          - [Troubleshooting](Troubleshooting)
+          
+          **Updated:** $(date +%Y-%m-%d)
+          EOF
+          )
+
+          # Use associative array to avoid pipe issues
+          declare -A needs_wiki
+          
+          # Scan all repos
+          page=1
+          while : ; do
+            response=$(curl -s -w "\n%{http_code}" \
+              -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/users/$USERNAME/repos?per_page=100&page=$page")
+            
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | head -n-1)
+            
+            [[ "$http_code" != "200" ]] && break
+            
+            count=$(echo "$body" | jq '. | length')
+            [[ "$count" -eq 0 ]] && break
+
+            # Process each repo
+            echo "$body" | jq -r '.[] | "\(.name) \(.has_wiki)"' | while read -r repo has_wiki; do
+              if [[ "$has_wiki" == "false" ]]; then
+                echo "📝 $repo → Wiki DISABLED (SKIPPING as requested)"
+              elif [[ "$has_wiki" == "true" ]]; then
+                # Check if wiki is actually empty/inaccessible
+                wiki_url="https://github.com/$USERNAME/$repo.wiki.git"
+                if ! git ls-remote --exit-code --heads "$wiki_url" >/dev/null 2>&1; then
+                  echo "📝 $repo → Wiki enabled but EMPTY/INACCESSIBLE (will create)"
+                  needs_wiki["$repo"]=1
+                else
+                  echo "✅ $repo → Wiki exists with content (SKIPPING)"
+                fi
+              fi
+            done
+            ((page++))
+          done
+
+          # Convert associative array to normal array
+          needs_wiki_array=()
+          for repo in "${!needs_wiki[@]}"; do
+            needs_wiki_array+=("$repo")
+          done
+
+          echo ""
+          echo "📊 Found ${#needs_wiki_array[@]} repositories needing wikis: ${needs_wiki_array[*]}"
+          
+          # CREATE WIKIS
+          for repo in "${needs_wiki_array[@]}"; do
+            echo ""
+            echo "🔄 Creating wiki for $repo..."
+            
+            # Setup git
+            TEMP_DIR=$(mktemp -d)
+            cd "$TEMP_DIR"
+            
+            git init
+            git checkout -b main
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            
+            # Create Home.md
+            echo "$HOME_MD" > Home.md
+            git add Home.md
+            git commit -m "Add initial Home.md via GitHub Actions"
+            
+            # Push to wiki
+            git remote add origin "https://x-access-token:$GH_TOKEN@github.com/$USERNAME/$repo.wiki.git"
+            if git push -u origin main 2>/dev/null; then
+              echo "✅ $repo → Wiki created with Home.md"
+            else
+              echo "❌ $repo → Failed to push wiki"
+            fi
+            
+            cd ..
+            rm -rf "$TEMP_DIR"
+          done
+
+          echo ""
+          echo "🎉 Wiki creation complete!"
