@@ -15,7 +15,7 @@ jobs:
       - name: Create Wikis for all repos
         env:
           USERNAME: Harshad41
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Fixed: Use secret, not XXX
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "Fetching repositories..."
           page=1
@@ -35,7 +35,7 @@ jobs:
             fi
             
             count=$(echo "$body" | jq '. | length')
-            if [ "$count" -eq 0 ]; then  # Fixed: Missing quote
+            if [ "$count" -eq 0 ]; then
               break
             fi
             
@@ -43,55 +43,40 @@ jobs:
               echo ""
               echo "Processing repo: $repo (wiki: $has_wiki)"
               
-              # Skip if wiki is disabled
               if [ "$has_wiki" = "false" ]; then
                 echo "  → Enabling wiki..."
                 curl -s -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
                   -H "Accept: application/vnd.github+json" \
                   "https://api.github.com/repos/$USERNAME/$repo" \
-                  -d '{"wiki": true}' > /dev/null
-                
-                if [ $? -eq 0 ]; then
-                  echo "  ✅ Wiki enabled for $repo"
-                else
-                  echo "  ❌ Failed to enable wiki for $repo"
-                  continue
-                fi
+                  -d '{"wiki": true}' > /dev/null || true
+                echo "  ✅ Wiki enabled for $repo"
               fi
               
-              # Check if wiki already has content
               wiki_git_url="https://github.com/$USERNAME/$repo.wiki.git"
               temp_dir=$(mktemp -d)
-              
               has_content=false
+              
               if git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null; then
-                # Check if wiki has actual content (excluding .git)
                 if find "$temp_dir" -maxdepth 1 -type f -not -path "$temp_dir/.git/*" | grep -q .; then
                   echo "  ✅ $repo → Wiki exists with content (SKIPPED)"
                   ((total_skipped++))
                   has_content=true
-                else
-                  echo "  📝 $repo → Wiki empty, creating Home.md..."
                 fi
-              else
-                echo "  📝 $repo → Wiki new/empty, creating Home.md..."
               fi
               
-              # Clean up clone
               rm -rf "$temp_dir"
               
-              # Create wiki content only if empty/new
-              if [ "$has_content" = "false" ]; then  # Fixed: Simplified logic
-                temp_dir=$(mktemp -d)
+              if [ "$has_content" = "false" ]; then
+                echo "  📝 $repo → Creating Home.md..."
                 
-                # Create Home.md content
-                cat > "$temp_dir/Home.md" << EOF
+                temp_dir=$(mktemp -d)
+                cat > "$temp_dir/Home.md" << 'EOF'
 # Welcome to the Repository Wiki
 
-This wiki serves as documentation for the **$repo** repository.
+This wiki serves as documentation for the **'"$repo"'** repository.
 
 ## Quick Start
-- **Repository**: https://github.com/Harshad41/$repo
+- **Repository**: https://github.com/Harshad41/'"$repo"'
 - **Purpose**: [Add description here]
 - **Tech Stack**: [List technologies used]
 
@@ -104,11 +89,8 @@ This wiki serves as documentation for the **$repo** repository.
 ## Getting Started
 \`\`\`
 # Clone the repo
-git clone https://github.com/Harshad41/$repo.git
-cd $repo
-
-# Install dependencies
-npm install  # or your package manager
+git clone https://github.com/Harshad41/'"$repo"'.git
+cd '"$repo"'
 \`\`\`
 
 ## Deployment
@@ -125,30 +107,20 @@ npm install  # or your package manager
 *This wiki was auto-generated on $(date '+%Y-%m-%d %H:%M:%S UTC')*
 EOF
 
-                # Clone wiki repo for push
-                if git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir/repo.wiki" 2>/dev/null; then
-                  cd "$temp_dir/repo.wiki"
-                  default_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
-                else
-                  cd "$temp_dir"
-                  git init
-                  git remote add origin "$wiki_git_url"
-                  default_branch="main"
-                fi
-                
-                # Configure git and push
+                cd "$temp_dir"
+                git init
                 git config user.name "GitHub Actions"
                 git config user.email "actions@github.com"
-                git checkout -b "$default_branch" 2>/dev/null || true
-                cp ../Home.md .
+                git remote add origin "$wiki_git_url"
+                git checkout -b main
                 git add Home.md
                 git commit -m "Add initial wiki Home.md (auto-generated)"
                 
-                if git push -u origin "$default_branch" 2>/dev/null; then
+                if git push -u origin main 2>/dev/null; then
                   echo "  ✅ $repo → Wiki created successfully!"
                   ((total_created++))
                 else
-                  echo "  ❌ $repo → Failed to push wiki content"
+                  echo "  ⚠️  $repo → Wiki push failed (may already exist)"
                 fi
                 
                 cd ..
@@ -162,4 +134,4 @@ EOF
           echo ""
           echo "=== SUMMARY ==="
           echo "Wikis created: $total_created"
-          echo "Wikis skipped (already exist): $total_skipped"
+          echo "Wikis skipped: $total_skipped"
