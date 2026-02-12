@@ -17,6 +17,27 @@ jobs:
           USERNAME: Harshad41
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          # Base64 encoded Home.md template (YAML safe!)
+          HOME_MD_B64="IyBXZWxjb21lIHRvIHRoZSBSZXBvc2l0b3J5IFdpa2kKIyMjIFN0YXJ0aW5nIFdpa2kgQ29udGVudAoKVGhpcyB3aWtpIHNlcnZlcyBhcyBkb2N1bWVudGF0aW9uIGZvciB0aGUgUkVQTyByZXBvc2l0b3J5LgoKIyMgUXVpY2sgU3RhcnQKKiogUmVwb3NpdG9yeToqIGh0dHBzOi8vZ2l0aHViLmNvbS9IYXJzaGFkNDEvUkVQTyoKKiogUHVycG9zZToqIFtBZGQkIGRlc2NyaXB0aW9uIGhlcmVdCiogKlRlY2ggU3RhY2sqIFtMaXN0IHRlY2hub2xvZ2llcyB1c2VkXQpCCiMjIHRvYy1nZW5lcmF0ZWQKdG9jCiMgR2V0dGluZyBTdGFydGVkCiMgRGVwbG95bWVudAojIENvbmZpZ3VyYXRpb24KIyBUcm91Ymxlc2hvb3RpbmcKZW5kb2MKIyMjIEdldHRpbmcgU3RhcnRlZAoKZ2l0IGNsb25lIGh0dHBzOi8vZ2l0aHViLmNvbS9IYXJzaGFkNDEvUkVQTy5naXQKY2QgUkVQTwojIEluc3RhbGwgZGVwZW5kZW5
+name: 4-Create-Wikis
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-wikis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq git
+
+      - name: Create Wikis for all repos
+        env:
+          USERNAME: Harshad41
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
           echo "Fetching repositories..."
           page=1
           total_created=0
