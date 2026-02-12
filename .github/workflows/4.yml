@@ -68,15 +68,15 @@ jobs:
               
               if [ "$has_content" = "false" ]; then
                 echo "  📝 $repo → Creating Home.md..."
-                
                 temp_dir=$(mktemp -d)
-                cat > "$temp_dir/Home.md" << 'EOF'
+                
+                cat > "$temp_dir/Home.md" << EOF
 # Welcome to the Repository Wiki
 
-This wiki serves as documentation for the **'"$repo"'** repository.
+This wiki serves as documentation for the ${repo} repository.
 
 ## Quick Start
-- **Repository**: https://github.com/Harshad41/'"$repo"'
+- **Repository**: https://github.com/Harshad41/${repo}
 - **Purpose**: [Add description here]
 - **Tech Stack**: [List technologies used]
 
@@ -89,8 +89,11 @@ This wiki serves as documentation for the **'"$repo"'** repository.
 ## Getting Started
 \`\`\`
 # Clone the repo
-git clone https://github.com/Harshad41/'"$repo"'.git
-cd '"$repo"'
+git clone https://github.com/Harshad41/${repo}.git
+cd ${repo}
+
+# Install dependencies
+npm install  # or your package manager
 \`\`\`
 
 ## Deployment
