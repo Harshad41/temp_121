@@ -1,4 +1,4 @@
-name: 6_working - Create Wikis (ARRAY FIXED)
+name: 6_working - Create Wikis
 on:
   workflow_dispatch:
 
