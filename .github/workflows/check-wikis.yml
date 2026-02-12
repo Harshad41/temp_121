@@ -1,0 +1,51 @@
+name: Check Wiki Status for All Repos
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-wikis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get install jq
+
+      - name: Check Wiki Status
+        env:
+          ORG_NAME: your-org-name
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching repositories..."
+
+          page=1
+          while : ; do
+            repos=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/orgs/$ORG_NAME/repos?per_page=100&page=$page")
+
+            count=$(echo "$repos" | jq '. | length')
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+
+            echo "$repos" | jq -r '.[] | "\(.name) \(.has_wiki)"' | while read repo has_wiki; do
+              
+              if [ "$has_wiki" = "true" ]; then
+                wiki_url="https://api.github.com/repos/$ORG_NAME/$repo.wiki"
+
+                wiki_check=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+                  "https://api.github.com/repos/$ORG_NAME/$repo.wiki")
+
+                if echo "$wiki_check" | grep -q "Not Found"; then
+                  echo "❌ $repo → Wiki enabled but EMPTY"
+                else
+                  echo "✅ $repo → Wiki exists"
+                fi
+              else
+                echo "❌ $repo → Wiki DISABLED"
+              fi
+
+            done
+
+            page=$((page + 1))
+          done
