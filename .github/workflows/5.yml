@@ -15,7 +15,7 @@ jobs:
       - name: Check & Create Wikis
         env:
           USERNAME: Harshad41
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: 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
         run: |
           # Standard wiki Home.md template
           HOME_MD_CONTENT=$(cat << 'EOF'
