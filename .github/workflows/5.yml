@@ -80,29 +80,37 @@ jobs:
               if ! git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null || \
                  ! find "$temp_dir" -maxdepth 1 -type f ! -name ".git" | grep -q .; then
 
-                cat <<'EOF' > "$temp_dir/Home.md"
-# Welcome to the Repository Wiki
+               file="$temp_dir/Home.md"
 
-This wiki serves as documentation for the **$repo** repository.
+echo "# Welcome to the Repository Wiki" > "$file"
+echo "" >> "$file"
+echo "This wiki serves as documentation for the **$repo** repository." >> "$file"
+echo "" >> "$file"
+echo "## Quick Start" >> "$file"
+echo "" >> "$file"
+echo "- **Repository**: https://github.com/$USERNAME/$repo" >> "$file"
+echo "- **Purpose**: Add description here" >> "$file"
+echo "- **Tech Stack**: List technologies used" >> "$file"
+echo "" >> "$file"
+echo "## Table of Contents" >> "$file"
+echo "" >> "$file"
+echo "- [Getting Started](#getting-started)" >> "$file"
+echo "- [Deployment](#deployment)" >> "$file"
+echo "- [Configuration](#configuration)" >> "$file"
+echo "- [Troubleshooting](#troubleshooting)" >> "$file"
+echo "" >> "$file"
+echo "## Getting Started" >> "$file"
+echo "" >> "$file"
+echo "Add setup instructions here." >> "$file"
 
-## Quick Start
+cd "$temp_dir"
+git config user.name "github-actions"
+git config user.email "github-actions@github.com"
+git add Home.md
+git commit -m "Initialize wiki"
+git push
+((total_created++))
 
-- **Repository**: https://github.com/$USERNAME/$repo
-- **Purpose**: Add description here
-- **Tech Stack**: List technologies used
-
-## Table of Contents
-
-- [Getting Started](#getting-started)
-- [Deployment](#deployment)
-- [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
-
-## Getting Started
-
-Add setup instructions here.
-
-EOF
 
               fi
 
