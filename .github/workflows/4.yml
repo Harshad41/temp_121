@@ -15,7 +15,7 @@ jobs:
       - name: Create Wikis for all repos
         env:
           USERNAME: Harshad41
-          GH_TOKEN: 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
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Fixed: Use secret, not XXX
         run: |
           echo "Fetching repositories..."
           page=1
@@ -35,7 +35,7 @@ jobs:
             fi
             
             count=$(echo "$body" | jq '. | length')
-            if [ "$count" -eq 0" ]; then
+            if [ "$count" -eq 0 ]; then  # Fixed: Missing quote
               break
             fi
             
@@ -63,11 +63,13 @@ jobs:
               wiki_git_url="https://github.com/$USERNAME/$repo.wiki.git"
               temp_dir=$(mktemp -d)
               
+              has_content=false
               if git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null; then
                 # Check if wiki has actual content (excluding .git)
                 if find "$temp_dir" -maxdepth 1 -type f -not -path "$temp_dir/.git/*" | grep -q .; then
                   echo "  ✅ $repo → Wiki exists with content (SKIPPED)"
                   ((total_skipped++))
+                  has_content=true
                 else
                   echo "  📝 $repo → Wiki empty, creating Home.md..."
                 fi
@@ -79,17 +81,17 @@ jobs:
               rm -rf "$temp_dir"
               
               # Create wiki content only if empty/new
-              if ! git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir" 2>/dev/null || \
-                 ! find "$temp_dir" -maxdepth 1 -type f -not -path "$temp_dir/.git/*" | grep -q .; then
+              if [ "$has_content" = "false" ]; then  # Fixed: Simplified logic
+                temp_dir=$(mktemp -d)
                 
                 # Create Home.md content
-                cat > "$temp_dir/Home.md" << 'EOF'
+                cat > "$temp_dir/Home.md" << EOF
 # Welcome to the Repository Wiki
 
-This wiki serves as documentation for the **$(basename $repo)** repository.
+This wiki serves as documentation for the **$repo** repository.
 
 ## Quick Start
-- **Repository**: https://github.com/Harshad41/$(basename $repo)
+- **Repository**: https://github.com/Harshad41/$repo
 - **Purpose**: [Add description here]
 - **Tech Stack**: [List technologies used]
 
@@ -100,3 +102,64 @@ This wiki serves as documentation for the **$(basename $repo)** repository.
 - [Troubleshooting](#troubleshooting)
 
 ## Getting Started
+\`\`\`
+# Clone the repo
+git clone https://github.com/Harshad41/$repo.git
+cd $repo
+
+# Install dependencies
+npm install  # or your package manager
+\`\`\`
+
+## Deployment
+(Add deployment instructions)
+
+## Configuration
+(Add configuration details)
+
+## Troubleshooting
+- Common issues and solutions
+
+---
+
+*This wiki was auto-generated on $(date '+%Y-%m-%d %H:%M:%S UTC')*
+EOF
+
+                # Clone wiki repo for push
+                if git clone --quiet --depth 1 "$wiki_git_url" "$temp_dir/repo.wiki" 2>/dev/null; then
+                  cd "$temp_dir/repo.wiki"
+                  default_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
+                else
+                  cd "$temp_dir"
+                  git init
+                  git remote add origin "$wiki_git_url"
+                  default_branch="main"
+                fi
+                
+                # Configure git and push
+                git config user.name "GitHub Actions"
+                git config user.email "actions@github.com"
+                git checkout -b "$default_branch" 2>/dev/null || true
+                cp ../Home.md .
+                git add Home.md
+                git commit -m "Add initial wiki Home.md (auto-generated)"
+                
+                if git push -u origin "$default_branch" 2>/dev/null; then
+                  echo "  ✅ $repo → Wiki created successfully!"
+                  ((total_created++))
+                else
+                  echo "  ❌ $repo → Failed to push wiki content"
+                fi
+                
+                cd ..
+                rm -rf "$temp_dir"
+              fi
+            done
+            
+            page=$((page + 1))
+          done
+          
+          echo ""
+          echo "=== SUMMARY ==="
+          echo "Wikis created: $total_created"
+          echo "Wikis skipped (already exist): $total_skipped"
