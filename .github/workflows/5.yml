@@ -86,14 +86,14 @@ jobs:
                 cat > "$temp_dir/Home.md" << 'EOF'
 # Welcome to the Repository Wiki
 
-This wiki serves as documentation for the **$(basename $repo)** repository.
+# This wiki serves as documentation for the **$(basename $repo)** repository.
 
-## Quick Start
+# Quick Start
 - **Repository**: https://github.com/Harshad41/$(basename $repo)
 - **Purpose**: [Add description here]
 - **Tech Stack**: [List technologies used]
 
-## Table of Contents
+# Table of Contents
 - [Getting Started](#getting-started)
 - [Deployment](#deployment)
 - [Configuration](#configuration)
