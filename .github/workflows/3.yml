@@ -1,0 +1,55 @@
+name: Check Wiki Status for All Repos
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-wikis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get install jq
+
+      - name: Check Wiki Status
+        env:
+          USERNAME: Harshad41 
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching repositories..."
+          page=1
+          while : ; do
+            response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/users/$USERNAME/repos?per_page=100&page=$page")
+            
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | head -n-1)
+            
+            if [ "$http_code" != "200" ]; then
+              echo "Error: HTTP $http_code"
+              echo "$body"
+              break
+            fi
+            
+            count=$(echo "$body" | jq '. | length')
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+            
+            echo "$body" | jq -r '.[] | "\(.name) \(.has_wiki)"' | while read repo has_wiki; do
+              if [ "$has_wiki" = "true" ]; then
+                # Check if wiki has any pages by checking the wiki git endpoint
+                wiki_pages=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+                  "https://api.github.com/repos/$USERNAME/$repo/git/refs/heads/wiki" 2>/dev/null || echo "")
+                
+                if [ -z "$wiki_pages" ] || echo "$wiki_pages" | grep -q "Not Found"; then
+                  echo "⚠️ $repo → Wiki enabled but NO PAGES"
+                else
+                  echo "✅ $repo → Wiki enabled with pages"
+                fi
+              else
+                echo "❌ $repo → Wiki DISABLED"
+              fi
+            done
+            page=$((page + 1))
+          done
